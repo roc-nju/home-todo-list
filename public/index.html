@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>家庭多人协同 Todo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top-bar">
+        <div>
+          <h1>家庭多人协同 Todo</h1>
+          <p class="subtitle">让说过的事真正被执行</p>
+        </div>
+        <div class="user-panel">
+          <div class="user-row">
+            <span class="label">当前角色</span>
+            <select id="currentUserSelect"></select>
+          </div>
+          <div class="user-row">
+            <button id="addMemberBtn" class="ghost">添加成员</button>
+          </div>
+          <div class="user-row">
+            <button id="logoutBtn" class="ghost">退出</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="stats">
+        <div class="stat-card">
+          <div class="stat-title">任务完成率</div>
+          <div id="completionRate" class="stat-value">0%</div>
+          <div id="completionDetail" class="stat-detail">0 / 0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">家庭协作原则</div>
+          <div class="stat-detail">所有成员平权创建与指派</div>
+          <div class="stat-detail">只有 Owner 会收到提醒</div>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <div class="section-head">
+          <h2>统计仪表盘</h2>
+          <div class="filters">
+            <select id="trendRange">
+              <option value="7">最近7天</option>
+              <option value="30">最近30天</option>
+            </select>
+          </div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="stat-card">
+            <div class="stat-title">逾期率</div>
+            <div id="overdueRate" class="stat-value">0%</div>
+            <div id="overdueDetail" class="stat-detail">0 / 0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">成员完成率</div>
+            <div id="memberStats" class="member-stats"></div>
+          </div>
+          <div class="stat-card wide">
+            <div class="stat-title">任务趋势</div>
+            <div id="trendChart" class="trend-chart"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="create">
+        <h2>新建任务</h2>
+        <textarea
+          id="taskContent"
+          placeholder="例如：周三你接孩子放学"
+        ></textarea>
+        <div id="triageHint" class="hint"></div>
+        <div class="form-grid">
+          <div class="form-block">
+            <div class="label">责任人</div>
+            <div id="ownersList" class="chip-list"></div>
+          </div>
+          <div class="form-block">
+            <label class="label" for="dueAt">截止时间</label>
+            <input id="dueAt" type="datetime-local" />
+            <label class="label" for="repeatRule">重复频率</label>
+            <select id="repeatRule">
+              <option value="none">不重复</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+            </select>
+            <label class="checkbox">
+              <input id="requireConfirm" type="checkbox" />
+              完成需确认
+            </label>
+          </div>
+        </div>
+        <button id="createTaskBtn" class="primary">创建并指派</button>
+      </section>
+
+      <section class="tasks">
+        <div class="section-head">
+          <h2>任务列表</h2>
+          <div class="filters">
+            <select id="statusFilter">
+              <option value="all">全部</option>
+              <option value="active">进行中</option>
+              <option value="pending">待确认</option>
+              <option value="done">已完成</option>
+              <option value="archived">已归档</option>
+              <option value="trash">回收站</option>
+            </select>
+            <select id="ownerFilter"></select>
+            <input id="dueDateFilter" type="date" />
+          </div>
+          <span class="filter-hint">回收站入口在状态筛选里</span>
+        </div>
+        <div id="taskList" class="task-list"></div>
+      </section>
+
+      <section class="calendar">
+        <div class="section-head">
+          <h2>日历视图</h2>
+          <div class="filters">
+            <button id="calendarPrev" class="ghost">上一页</button>
+            <div id="calendarTitle" class="calendar-title"></div>
+            <button id="calendarNext" class="ghost">下一页</button>
+            <select id="calendarView">
+              <option value="month">月视图</option>
+              <option value="week">周视图</option>
+            </select>
+          </div>
+        </div>
+        <div class="calendar-weekdays">
+          <span>一</span>
+          <span>二</span>
+          <span>三</span>
+          <span>四</span>
+          <span>五</span>
+          <span>六</span>
+          <span>日</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section class="reminders">
+        <div class="section-head">
+          <h2>提醒中心</h2>
+          <div class="reminder-settings">
+            <label class="checkbox">
+              <input id="remindEnabled" type="checkbox" />
+              启用提醒
+            </label>
+            <label class="checkbox">
+              <input id="remind24h" type="checkbox" />
+              T-24h
+            </label>
+            <label class="checkbox">
+              <input id="remind2h" type="checkbox" />
+              T-2h
+            </label>
+            <label class="checkbox">
+              <input id="remindOverdue" type="checkbox" />
+              超时提醒
+            </label>
+          </div>
+        </div>
+        <div id="reminderList" class="reminder-list"></div>
+      </section>
+    </div>
+
+    <div id="authOverlay" class="auth-overlay">
+      <div class="auth-card">
+        <h2>请输入访问密码</h2>
+        <input id="authPassword" type="password" placeholder="访问密码" />
+        <div id="authError" class="auth-error"></div>
+        <button id="authConfirm" class="primary">进入</button>
+      </div>
+    </div>
+
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div id="modalTitle" class="modal-title"></div>
+        <div id="modalBody" class="modal-body"></div>
+        <div class="modal-actions">
+          <button id="modalCancel" class="ghost">取消</button>
+          <button id="modalConfirm" class="primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

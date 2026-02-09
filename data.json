@@ -1,0 +1,126 @@
+{
+  "members": [
+    {
+      "id": "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f",
+      "name": "爸爸",
+      "reminderPrefs": {
+        "enabled": true,
+        "remind24h": true,
+        "remind2h": true,
+        "overdue": true
+      }
+    },
+    {
+      "id": "9fe8fcef-3db1-4095-af92-e42a7f28fcfe",
+      "name": "妈妈",
+      "reminderPrefs": {
+        "enabled": true,
+        "remind24h": true,
+        "remind2h": true,
+        "overdue": true
+      }
+    },
+    {
+      "id": "1c6db8b9-ec72-4f8c-89eb-bb2b23b65b5a",
+      "name": "爷爷",
+      "reminderPrefs": {
+        "enabled": true,
+        "remind24h": true,
+        "remind2h": true,
+        "overdue": true
+      }
+    },
+    {
+      "id": "2dcb72a1-df1d-43b0-bd0c-efc7a2e84f6c",
+      "name": "奶奶",
+      "reminderPrefs": {
+        "enabled": true,
+        "remind24h": true,
+        "remind2h": true,
+        "overdue": true
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "370cf1cb-2bec-47ae-b20b-8b0e781b8c70",
+      "content": "我的第一个任务：周五去看书",
+      "owners": [
+        "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f"
+      ],
+      "dueAt": "2026-02-13T04:00:00+00:00",
+      "repeat": {
+        "type": "monthly"
+      },
+      "seriesId": "0c65d2a9-f599-4b03-8cd3-6557689ff8d4",
+      "occurrence": 1,
+      "requireConfirm": false,
+      "createdBy": "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f",
+      "state": "已接受",
+      "subtasks": [],
+      "comments": [
+        {
+          "id": "e5c4ebc1-b644-4c4f-a61f-d8e35e59ce14",
+          "authorId": "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f",
+          "content": "@谁？",
+          "mentions": [],
+          "createdAt": "2026-02-09T03:14:35.905164+00:00"
+        }
+      ],
+      "archivedAt": null,
+      "deletedAt": null,
+      "createdAt": "2026-02-09T03:14:20.708887+00:00",
+      "updatedAt": "2026-02-09T03:14:35.905184+00:00",
+      "reminders": {
+        "remind24hSent": false,
+        "remind2hSent": false,
+        "lastOverdueAt": null,
+        "snoozeUntil": null
+      }
+    },
+    {
+      "id": "e1664acb-9e62-42f6-811f-3c2c2990faa0",
+      "content": "周二啦啦啦放到",
+      "owners": [
+        "9fe8fcef-3db1-4095-af92-e42a7f28fcfe"
+      ],
+      "dueAt": "2026-02-10T04:00:00+00:00",
+      "requireConfirm": false,
+      "createdBy": "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f",
+      "state": "已指派",
+      "createdAt": "2026-02-08T09:40:39.794228+00:00",
+      "updatedAt": "2026-02-09T03:53:15.802394+00:00",
+      "reminders": {
+        "remind24hSent": false,
+        "remind2hSent": false,
+        "lastOverdueAt": null,
+        "snoozeUntil": null
+      },
+      "subtasks": [
+        {
+          "id": "3d391a9b-93bc-4f9a-a4f9-51e3e1660648",
+          "content": "子任务123",
+          "done": false,
+          "createdAt": "2026-02-09T03:13:54.446497+00:00",
+          "doneAt": null
+        }
+      ],
+      "comments": [
+        {
+          "id": "47a3d879-aa8d-4d79-add6-33af2aa1f512",
+          "authorId": "c06d6f58-7d72-4fd3-9bfa-3e217b2e4e9f",
+          "content": "啦啦啦",
+          "mentions": [],
+          "createdAt": "2026-02-09T03:13:37.742242+00:00"
+        }
+      ],
+      "archivedAt": null,
+      "deletedAt": "2026-02-09T03:53:15.802367+00:00",
+      "repeat": {
+        "type": "none"
+      },
+      "seriesId": null,
+      "occurrence": 1
+    }
+  ]
+}
