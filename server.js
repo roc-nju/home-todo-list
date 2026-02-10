@@ -1,18 +1,15 @@
-const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const express = require("express");
 const { Server } = require("socket.io");
 const { randomUUID } = require("crypto");
+const { createStore } = require("./store");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const dataFile = path.join(__dirname, "data.json");
 const defaultMembers = ["爸爸", "妈妈", "爷爷", "奶奶"];
-
-let state = { members: [], tasks: [] };
 
 const createMember = (name) => ({
   id: randomUUID(),
@@ -24,6 +21,9 @@ const createMember = (name) => ({
     overdue: true
   }
 });
+
+const store = createStore({ createMember, defaultMembers });
+const state = store.state;
 
 const createTask = ({ content, owners, dueAt, requireConfirm, createdBy }) => ({
   id: randomUUID(),
@@ -43,27 +43,8 @@ const createTask = ({ content, owners, dueAt, requireConfirm, createdBy }) => ({
   }
 });
 
-const saveState = () => {
-  fs.writeFileSync(dataFile, JSON.stringify(state, null, 2), "utf8");
-};
-
 const loadState = () => {
-  if (fs.existsSync(dataFile)) {
-    try {
-      const raw = fs.readFileSync(dataFile, "utf8");
-      const parsed = JSON.parse(raw);
-      state = {
-        members: Array.isArray(parsed.members) ? parsed.members : [],
-        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : []
-      };
-      return;
-    } catch (error) {
-      state = { members: [], tasks: [] };
-    }
-  }
-  state.members = defaultMembers.map(createMember);
-  state.tasks = [];
-  saveState();
+  store.load();
 };
 
 const broadcast = () => {
@@ -87,6 +68,30 @@ app.get("/api/state", (req, res) => {
   res.json(state);
 });
 
+app.get("/api/stats/reminders", (req, res) => {
+  const days = Math.max(1, Number(req.query?.days || 7));
+  const stats = store.getReminderStats(days);
+  res.json(stats);
+});
+
+app.get("/api/stats/reminders/trend", (req, res) => {
+  const days = Math.max(1, Number(req.query?.days || 7));
+  const stats = store.getReminderTrend(days);
+  res.json(stats);
+});
+
+app.get("/api/stats/tasks", (req, res) => {
+  const days = Math.max(1, Number(req.query?.days || 7));
+  const stats = store.getTaskEventStats(days);
+  res.json(stats);
+});
+
+app.get("/api/stats/members", (req, res) => {
+  const days = Math.max(1, Number(req.query?.days || 7));
+  const stats = store.getMemberStats(days);
+  res.json(stats);
+});
+
 app.post("/api/members", (req, res) => {
   const name = String(req.body?.name || "").trim();
   if (!name) {
@@ -95,7 +100,7 @@ app.post("/api/members", (req, res) => {
   }
   const member = createMember(name);
   state.members.push(member);
-  saveState();
+  store.upsertMember(member);
   broadcast();
   res.json(member);
 });
@@ -118,7 +123,7 @@ app.patch("/api/members/:id", (req, res) => {
   if (req.body?.name) {
     member.name = String(req.body.name).trim() || member.name;
   }
-  saveState();
+  store.upsertMember(member);
   broadcast();
   res.json(member);
 });
@@ -139,7 +144,16 @@ app.post("/api/tasks", (req, res) => {
   const requireConfirm = Boolean(req.body?.requireConfirm);
   const task = createTask({ content, owners, dueAt, requireConfirm, createdBy });
   state.tasks.unshift(task);
-  saveState();
+  store.upsertTask(task);
+  store.logTaskEvents([
+    {
+      id: randomUUID(),
+      taskId: task.id,
+      actorId: createdBy,
+      action: "create",
+      occurredAt: new Date().toISOString()
+    }
+  ]);
   broadcast();
   res.json(task);
 });
@@ -156,7 +170,16 @@ app.patch("/api/tasks/:id", (req, res) => {
 
   const applyUpdate = () => {
     task.updatedAt = new Date().toISOString();
-    saveState();
+    store.upsertTask(task);
+    store.logTaskEvents([
+      {
+        id: randomUUID(),
+        taskId: task.id,
+        actorId,
+        action,
+        occurredAt: task.updatedAt
+      }
+    ]);
     broadcast();
     res.json(task);
   };
@@ -228,7 +251,7 @@ io.on("connection", (socket) => {
   });
 });
 
-const maybeSendReminder = (task, type) => {
+const maybeSendReminder = (task, type, sentAt, events) => {
   task.owners.forEach((ownerId) => {
     const member = getMember(ownerId);
     if (!member || !member.reminderPrefs?.enabled) {
@@ -244,12 +267,21 @@ const maybeSendReminder = (task, type) => {
       return;
     }
     io.to(`member:${ownerId}`).emit("reminder", { taskId: task.id, type });
+    events.push({
+      id: randomUUID(),
+      taskId: task.id,
+      memberId: ownerId,
+      type,
+      sentAt
+    });
   });
 };
 
 const reminderTick = () => {
   const now = Date.now();
-  let dirty = false;
+  const sentAt = new Date().toISOString();
+  const changedTasks = [];
+  const reminderEvents = [];
   state.tasks.forEach((task) => {
     if (!task.dueAt || !activeStates.has(task.state)) {
       return;
@@ -264,32 +296,35 @@ const reminderTick = () => {
         return;
       }
       task.reminders.snoozeUntil = null;
-      dirty = true;
+      changedTasks.push(task);
     }
     const diff = due - now;
     if (diff <= 24 * 60 * 60 * 1000 && !task.reminders.remind24hSent) {
-      maybeSendReminder(task, "remind24h");
+      maybeSendReminder(task, "remind24h", sentAt, reminderEvents);
       task.reminders.remind24hSent = true;
-      dirty = true;
+      changedTasks.push(task);
     }
     if (diff <= 2 * 60 * 60 * 1000 && !task.reminders.remind2hSent) {
-      maybeSendReminder(task, "remind2h");
+      maybeSendReminder(task, "remind2h", sentAt, reminderEvents);
       task.reminders.remind2hSent = true;
-      dirty = true;
+      changedTasks.push(task);
     }
     if (diff <= 0) {
       const last = task.reminders.lastOverdueAt
         ? new Date(task.reminders.lastOverdueAt).getTime()
         : 0;
       if (!last || now - last >= 6 * 60 * 60 * 1000) {
-        maybeSendReminder(task, "overdue");
+        maybeSendReminder(task, "overdue", sentAt, reminderEvents);
         task.reminders.lastOverdueAt = new Date().toISOString();
-        dirty = true;
+        changedTasks.push(task);
       }
     }
   });
-  if (dirty) {
-    saveState();
+  if (reminderEvents.length) {
+    store.logReminderEvents(reminderEvents);
+  }
+  if (changedTasks.length) {
+    store.upsertTasks(changedTasks);
   }
 };
 

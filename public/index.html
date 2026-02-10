@@ -44,10 +44,15 @@
         <div class="section-head">
           <h2>统计仪表盘</h2>
           <div class="filters">
+            <select id="trendType">
+              <option value="tasks">任务趋势</option>
+              <option value="reminders">提醒趋势</option>
+            </select>
             <select id="trendRange">
               <option value="7">最近7天</option>
               <option value="30">最近30天</option>
             </select>
+            <button id="exportStatsBtn" class="ghost">导出CSV</button>
           </div>
         </div>
         <div class="dashboard-grid">
@@ -60,8 +65,23 @@
             <div class="stat-title">成员完成率</div>
             <div id="memberStats" class="member-stats"></div>
           </div>
+          <div class="stat-card">
+            <div class="stat-title">提醒发送</div>
+            <div id="reminderStats" class="stat-list"></div>
+            <div class="stat-subtitle">Top 任务</div>
+            <div id="reminderTaskTop" class="stat-list"></div>
+            <div class="stat-subtitle">Top 成员</div>
+            <div id="reminderMemberTop" class="stat-list"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">任务行为</div>
+            <div id="taskEventStats" class="stat-list"></div>
+            <div class="stat-subtitle">Top 成员</div>
+            <div id="taskActorTop" class="stat-list"></div>
+          </div>
           <div class="stat-card wide">
             <div class="stat-title">任务趋势</div>
+            <div id="trendLegend" class="trend-legend"></div>
             <div id="trendChart" class="trend-chart"></div>
           </div>
         </div>

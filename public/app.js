@@ -10,6 +10,23 @@ const state = {
 let eventSource = null;
 let sseRetryTimer = null;
 let calendarDate = new Date();
+const chartTooltip = document.createElement("div");
+chartTooltip.className = "chart-tooltip";
+document.body.appendChild(chartTooltip);
+const reminderTypeLabel = {
+  remind24h: "T-24h",
+  remind2h: "T-2h",
+  overdue: "超时"
+};
+const taskActionLabel = {
+  create: "创建",
+  accept: "接受",
+  start: "开始",
+  complete: "完成",
+  confirm: "确认",
+  snooze: "稍后提醒",
+  update: "编辑"
+};
 
 const elements = {
   app: document.getElementById("app"),
@@ -28,9 +45,17 @@ const elements = {
   ownerFilter: document.getElementById("ownerFilter"),
   dueDateFilter: document.getElementById("dueDateFilter"),
   trendRange: document.getElementById("trendRange"),
+  trendType: document.getElementById("trendType"),
+  exportStatsBtn: document.getElementById("exportStatsBtn"),
   overdueRate: document.getElementById("overdueRate"),
   overdueDetail: document.getElementById("overdueDetail"),
   memberStats: document.getElementById("memberStats"),
+  reminderStats: document.getElementById("reminderStats"),
+  reminderTaskTop: document.getElementById("reminderTaskTop"),
+  reminderMemberTop: document.getElementById("reminderMemberTop"),
+  taskEventStats: document.getElementById("taskEventStats"),
+  taskActorTop: document.getElementById("taskActorTop"),
+  trendLegend: document.getElementById("trendLegend"),
   trendChart: document.getElementById("trendChart"),
   calendarPrev: document.getElementById("calendarPrev"),
   calendarNext: document.getElementById("calendarNext"),
@@ -509,6 +534,32 @@ const renderCompletion = () => {
   elements.completionDetail.textContent = `${completed} / ${total}`;
 };
 
+const renderTrendLegend = (type) => {
+  if (type === "reminders") {
+    elements.trendLegend.innerHTML = `
+      <div class="legend-item"><span class="legend-dot"></span>提醒总量</div>
+      <div class="legend-item"><span class="legend-dot completed"></span>超时提醒</div>
+    `;
+    return;
+  }
+  elements.trendLegend.innerHTML = `
+    <div class="legend-item"><span class="legend-dot"></span>创建任务</div>
+    <div class="legend-item"><span class="legend-dot completed"></span>完成任务</div>
+  `;
+};
+
+const showChartTooltip = (event, label, value, dateLabel) => {
+  const title = dateLabel ? `${dateLabel} ${label}` : label;
+  chartTooltip.textContent = `${title}：${value}`;
+  chartTooltip.style.left = `${event.clientX}px`;
+  chartTooltip.style.top = `${event.clientY}px`;
+  chartTooltip.classList.add("show");
+};
+
+const hideChartTooltip = () => {
+  chartTooltip.classList.remove("show");
+};
+
 const renderDashboard = () => {
   const visibleTasks = getVisibleTasks();
   const now = new Date();
@@ -542,7 +593,15 @@ const renderDashboard = () => {
     elements.memberStats.appendChild(empty);
   }
 
+  elements.reminderStats.innerHTML = "";
+  elements.taskEventStats.innerHTML = "";
+  elements.reminderTaskTop.innerHTML = "";
+  elements.reminderMemberTop.innerHTML = "";
+  elements.taskActorTop.innerHTML = "";
+
   const range = Number(elements.trendRange.value || 7);
+  const trendType = elements.trendType.value || "tasks";
+  renderTrendLegend(trendType);
   const days = [];
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -554,48 +613,276 @@ const renderDashboard = () => {
   }
   const createdCount = {};
   const completedCount = {};
-  visibleTasks.forEach((task) => {
-    const createdKey = formatLocalDate(task.createdAt);
-    if (createdKey) {
-      createdCount[createdKey] = (createdCount[createdKey] || 0) + 1;
+  if (trendType === "tasks") {
+    visibleTasks.forEach((task) => {
+      const createdKey = formatLocalDate(task.createdAt);
+      if (createdKey) {
+        createdCount[createdKey] = (createdCount[createdKey] || 0) + 1;
+      }
+      if (task.state === "已完成") {
+        const doneKey = formatLocalDate(task.updatedAt);
+        if (doneKey) {
+          completedCount[doneKey] = (completedCount[doneKey] || 0) + 1;
+        }
+      }
+    });
+  }
+  elements.trendChart.innerHTML = "";
+  const renderTrendBars = (seriesA, seriesB, labelA, labelB) => {
+    const maxCount = days.reduce((max, d) => {
+      const key = formatLocalDate(d);
+      const a = seriesA[key] || 0;
+      const b = seriesB[key] || 0;
+      return Math.max(max, a, b);
+    }, 0);
+    days.forEach((d) => {
+      const key = formatLocalDate(d);
+      const a = seriesA[key] || 0;
+      const b = seriesB[key] || 0;
+      const col = document.createElement("div");
+      col.className = "trend-col";
+      const bars = document.createElement("div");
+      bars.className = "trend-bars";
+      const dateLabel = formatShortDate(d);
+      const barA = document.createElement("div");
+      barA.className = "trend-bar created";
+      barA.style.height = maxCount ? `${Math.round((a / maxCount) * 100)}%` : "0%";
+      barA.dataset.label = labelA;
+      barA.dataset.value = a;
+      barA.dataset.date = dateLabel;
+      const barB = document.createElement("div");
+      barB.className = "trend-bar completed";
+      barB.style.height = maxCount ? `${Math.round((b / maxCount) * 100)}%` : "0%";
+      barB.dataset.label = labelB;
+      barB.dataset.value = b;
+      barB.dataset.date = dateLabel;
+      [barA, barB].forEach((bar) => {
+        bar.addEventListener("mouseenter", (event) => {
+          showChartTooltip(event, bar.dataset.label, bar.dataset.value, bar.dataset.date);
+        });
+        bar.addEventListener("mousemove", (event) => {
+          showChartTooltip(event, bar.dataset.label, bar.dataset.value, bar.dataset.date);
+        });
+        bar.addEventListener("mouseleave", hideChartTooltip);
+      });
+      bars.appendChild(barA);
+      bars.appendChild(barB);
+      const label = document.createElement("div");
+      label.className = "trend-label";
+      label.textContent = dateLabel;
+      col.appendChild(bars);
+      col.appendChild(label);
+      elements.trendChart.appendChild(col);
+    });
+  };
+  if (trendType === "tasks") {
+    renderTrendBars(createdCount, completedCount, "创建", "完成");
+  } else {
+    elements.trendChart.innerHTML = "";
+  }
+
+  loadRemoteStats(range, trendType, days);
+};
+
+const renderStatList = (container, rows, labelKey, valueKey) => {
+  container.innerHTML = "";
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "暂无数据";
+    container.appendChild(empty);
+    return;
+  }
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "stat-list-item";
+    item.innerHTML = `<span>${row[labelKey]}</span><strong>${row[valueKey]}</strong>`;
+    container.appendChild(item);
+  });
+};
+
+const renderMemberStatsFromRemote = (members) => {
+  if (!members.length) {
+    return;
+  }
+  elements.memberStats.innerHTML = "";
+  members.forEach((member) => {
+    const rate = Math.round((member.completionRate || 0) * 100);
+    const row = document.createElement("div");
+    row.className = "member-row";
+    row.innerHTML = `
+      <span>${member.name}</span>
+      <div class="member-bar"><span style="width: ${rate}%"></span></div>
+      <span>${rate}%</span>
+    `;
+    elements.memberStats.appendChild(row);
+  });
+};
+
+const loadRemoteStats = async (days, trendType, daySeries) => {
+  try {
+    const [reminderRes, taskRes, memberRes, reminderTrendRes] = await Promise.all([
+      fetch(`/api/stats/reminders?days=${days}`),
+      fetch(`/api/stats/tasks?days=${days}`),
+      fetch(`/api/stats/members?days=${days}`),
+      trendType === "reminders" ? fetch(`/api/stats/reminders/trend?days=${days}`) : Promise.resolve(null)
+    ]);
+    if (reminderRes.ok) {
+      const reminderStats = await reminderRes.json();
+      const list = (reminderStats.byType || []).map((row) => ({
+        label: reminderTypeLabel[row.type] || row.type,
+        value: row.count
+      }));
+      renderStatList(elements.reminderStats, list, "label", "value");
+      const byTask = (reminderStats.byTask || [])
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((row) => ({
+          label: (state.tasks.find((task) => task.id === row.taskId)?.content) || row.taskId,
+          value: row.count
+        }));
+      renderStatList(elements.reminderTaskTop, byTask, "label", "value");
+      const byMember = (reminderStats.byMember || [])
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((row) => {
+          const member = state.members.find((m) => m.id === row.memberId);
+          return {
+            label: member ? member.name : row.memberId,
+            value: row.count
+          };
+        });
+      renderStatList(elements.reminderMemberTop, byMember, "label", "value");
     }
-    if (task.state === "已完成") {
-      const doneKey = formatLocalDate(task.updatedAt);
-      if (doneKey) {
-        completedCount[doneKey] = (completedCount[doneKey] || 0) + 1;
+    if (taskRes.ok) {
+      const taskStats = await taskRes.json();
+      const list = (taskStats.byAction || []).map((row) => ({
+        label: taskActionLabel[row.action] || row.action,
+        value: row.count
+      }));
+      renderStatList(elements.taskEventStats, list, "label", "value");
+      const byActor = (taskStats.byActor || [])
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((row) => {
+          const member = state.members.find((m) => m.id === row.actorId);
+          return {
+            label: member ? member.name : row.actorId,
+            value: row.count
+          };
+        });
+      renderStatList(elements.taskActorTop, byActor, "label", "value");
+    }
+    if (memberRes.ok) {
+      const memberStats = await memberRes.json();
+      if (Array.isArray(memberStats.members)) {
+        renderMemberStatsFromRemote(memberStats.members);
       }
     }
+    if (trendType === "reminders" && reminderTrendRes && reminderTrendRes.ok) {
+      const trendData = await reminderTrendRes.json();
+      const rows = trendData.rows || [];
+      const total = {};
+      const overdue = {};
+      rows.forEach((row) => {
+        total[row.day] = (total[row.day] || 0) + row.count;
+        if (row.type === "overdue") {
+          overdue[row.day] = (overdue[row.day] || 0) + row.count;
+        }
+      });
+      elements.trendChart.innerHTML = "";
+      const maxCount = daySeries.reduce((max, d) => {
+        const key = formatLocalDate(d);
+        const a = total[key] || 0;
+        const b = overdue[key] || 0;
+        return Math.max(max, a, b);
+      }, 0);
+      daySeries.forEach((d) => {
+        const key = formatLocalDate(d);
+        const a = total[key] || 0;
+        const b = overdue[key] || 0;
+        const dateLabel = formatShortDate(d);
+        const col = document.createElement("div");
+        col.className = "trend-col";
+        const bars = document.createElement("div");
+        bars.className = "trend-bars";
+        const barA = document.createElement("div");
+        barA.className = "trend-bar created";
+        barA.style.height = maxCount ? `${Math.round((a / maxCount) * 100)}%` : "0%";
+        barA.dataset.label = "提醒";
+        barA.dataset.value = a;
+        barA.dataset.date = dateLabel;
+        const barB = document.createElement("div");
+        barB.className = "trend-bar completed";
+        barB.style.height = maxCount ? `${Math.round((b / maxCount) * 100)}%` : "0%";
+        barB.dataset.label = "超时";
+        barB.dataset.value = b;
+        barB.dataset.date = dateLabel;
+        [barA, barB].forEach((bar) => {
+          bar.addEventListener("mouseenter", (event) => {
+            showChartTooltip(event, bar.dataset.label, bar.dataset.value, bar.dataset.date);
+          });
+          bar.addEventListener("mousemove", (event) => {
+            showChartTooltip(event, bar.dataset.label, bar.dataset.value, bar.dataset.date);
+          });
+          bar.addEventListener("mouseleave", hideChartTooltip);
+        });
+        bars.appendChild(barA);
+        bars.appendChild(barB);
+        const label = document.createElement("div");
+        label.className = "trend-label";
+        label.textContent = dateLabel;
+        col.appendChild(bars);
+        col.appendChild(label);
+        elements.trendChart.appendChild(col);
+      });
+    }
+  } catch (error) {
+    return;
+  }
+};
+
+const buildCsvSection = (title, rows, headers) => {
+  const lines = [];
+  lines.push(title);
+  lines.push(headers.join(","));
+  rows.forEach((row) => {
+    lines.push(headers.map((key) => `"${String(row[key] ?? "")}"`).join(","));
   });
-  const maxCount = days.reduce((max, d) => {
-    const key = formatLocalDate(d);
-    const created = createdCount[key] || 0;
-    const done = completedCount[key] || 0;
-    return Math.max(max, created, done);
-  }, 0);
-  elements.trendChart.innerHTML = "";
-  days.forEach((d) => {
-    const key = formatLocalDate(d);
-    const created = createdCount[key] || 0;
-    const done = completedCount[key] || 0;
-    const col = document.createElement("div");
-    col.className = "trend-col";
-    const bars = document.createElement("div");
-    bars.className = "trend-bars";
-    const createdBar = document.createElement("div");
-    createdBar.className = "trend-bar created";
-    createdBar.style.height = maxCount ? `${Math.round((created / maxCount) * 100)}%` : "0%";
-    const doneBar = document.createElement("div");
-    doneBar.className = "trend-bar completed";
-    doneBar.style.height = maxCount ? `${Math.round((done / maxCount) * 100)}%` : "0%";
-    bars.appendChild(createdBar);
-    bars.appendChild(doneBar);
-    const label = document.createElement("div");
-    label.className = "trend-label";
-    label.textContent = formatShortDate(d);
-    col.appendChild(bars);
-    col.appendChild(label);
-    elements.trendChart.appendChild(col);
-  });
+  lines.push("");
+  return lines.join("\n");
+};
+
+const exportStatsCsv = async () => {
+  const days = Number(elements.trendRange.value || 7);
+  const [reminderRes, taskRes, memberRes, reminderTrendRes] = await Promise.all([
+    fetch(`/api/stats/reminders?days=${days}`),
+    fetch(`/api/stats/tasks?days=${days}`),
+    fetch(`/api/stats/members?days=${days}`),
+    fetch(`/api/stats/reminders/trend?days=${days}`)
+  ]);
+  const reminderStats = reminderRes.ok ? await reminderRes.json() : { byType: [], byMember: [], byTask: [] };
+  const taskStats = taskRes.ok ? await taskRes.json() : { byAction: [], byActor: [] };
+  const memberStats = memberRes.ok ? await memberRes.json() : { members: [] };
+  const reminderTrend = reminderTrendRes.ok ? await reminderTrendRes.json() : { rows: [] };
+  const sections = [];
+  sections.push(buildCsvSection("提醒类型统计", reminderStats.byType || [], ["type", "count"]));
+  sections.push(buildCsvSection("提醒成员统计", reminderStats.byMember || [], ["memberId", "count"]));
+  sections.push(buildCsvSection("提醒任务统计", reminderStats.byTask || [], ["taskId", "count"]));
+  sections.push(buildCsvSection("提醒趋势", reminderTrend.rows || [], ["day", "type", "count"]));
+  sections.push(buildCsvSection("任务行为统计", taskStats.byAction || [], ["action", "count"]));
+  sections.push(buildCsvSection("任务成员统计", taskStats.byActor || [], ["actorId", "count"]));
+  sections.push(buildCsvSection("成员完成率", memberStats.members || [], ["memberId", "name", "totalAssigned", "completed", "completionRate"]));
+  const csv = sections.join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `stats_${days}d.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 const renderCalendar = () => {
@@ -1137,6 +1424,8 @@ elements.statusFilter.addEventListener("change", renderTasks);
 elements.ownerFilter.addEventListener("change", renderTasks);
 elements.dueDateFilter.addEventListener("change", renderTasks);
 elements.trendRange.addEventListener("change", renderDashboard);
+elements.trendType.addEventListener("change", renderDashboard);
+elements.exportStatsBtn.addEventListener("click", exportStatsCsv);
 elements.calendarView.addEventListener("change", renderCalendar);
 elements.calendarPrev.addEventListener("click", () => {
   if (elements.calendarView.value === "week") {
