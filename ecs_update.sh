@@ -7,6 +7,7 @@ IMAGE_NAME="home-todo:latest"
 CONTAINER_NAME="home-todo"
 PORT="5173"
 SQLITE_FILE="$DATA_DIR/data.sqlite"
+BASE_PATH="/home-todo"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker 未安装，请先运行 ecs_onekey.sh"
@@ -36,6 +37,7 @@ sudo docker run -d --restart=always \
   --name "$CONTAINER_NAME" \
   -p 80:$PORT \
   -e PORT=$PORT \
+  -e BASE_PATH=$BASE_PATH \
   -e STORE=sqlite \
   -e SQLITE_FILE=/app/data.sqlite \
   -v "$SQLITE_FILE:/app/data.sqlite" \

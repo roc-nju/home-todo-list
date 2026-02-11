@@ -53,6 +53,16 @@ const applyMigrations = (db) => {
     version = 5;
   }
 
+  if (version < 6) {
+    try {
+      db.prepare("ALTER TABLE members ADD COLUMN wechat_openid TEXT").run();
+    } catch (error) {
+      db.prepare("SELECT wechat_openid FROM members LIMIT 1").get();
+    }
+    setVersion(6);
+    version = 6;
+  }
+
   return version;
 };
 

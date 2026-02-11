@@ -33,7 +33,7 @@ const createSqliteStore = ({ createMember, defaultMembers }) => {
   const db = new Database(sqliteFile);
   db.pragma("journal_mode = WAL");
   db.prepare(
-    "CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT, reminder_prefs TEXT)"
+    "CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT, reminder_prefs TEXT, wechat_openid TEXT)"
   ).run();
   db.prepare(
     "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, content TEXT, due_at TEXT, require_confirm INTEGER, state TEXT, created_by TEXT, created_at TEXT, updated_at TEXT, archived_at TEXT, deleted_at TEXT, repeat_rule TEXT, series_id TEXT, occurrence INTEGER, reminders TEXT)"
@@ -56,9 +56,10 @@ const createSqliteStore = ({ createMember, defaultMembers }) => {
   db.prepare(
     "CREATE TABLE IF NOT EXISTS task_events (id TEXT PRIMARY KEY, task_id TEXT, actor_id TEXT, action TEXT, occurred_at TEXT)"
   ).run();
+  applyMigrations(db);
   const state = { members: [], tasks: [] };
   const insertMember = db.prepare(
-    "INSERT INTO members (id, name, reminder_prefs) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, reminder_prefs = excluded.reminder_prefs"
+    "INSERT INTO members (id, name, reminder_prefs, wechat_openid) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, reminder_prefs = excluded.reminder_prefs, wechat_openid = excluded.wechat_openid"
   );
   const insertTask = db.prepare(
     "INSERT INTO tasks (id, content, due_at, require_confirm, state, created_by, created_at, updated_at, archived_at, deleted_at, repeat_rule, series_id, occurrence, reminders) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET content = excluded.content, due_at = excluded.due_at, require_confirm = excluded.require_confirm, state = excluded.state, created_by = excluded.created_by, created_at = excluded.created_at, updated_at = excluded.updated_at, archived_at = excluded.archived_at, deleted_at = excluded.deleted_at, repeat_rule = excluded.repeat_rule, series_id = excluded.series_id, occurrence = excluded.occurrence, reminders = excluded.reminders"
@@ -104,7 +105,12 @@ const createSqliteStore = ({ createMember, defaultMembers }) => {
   };
 
   const upsertMember = (member) => {
-    insertMember.run(member.id, member.name, JSON.stringify(member.reminderPrefs || {}));
+    insertMember.run(
+      member.id,
+      member.name,
+      JSON.stringify(member.reminderPrefs || {}),
+      member.wechatOpenId || null
+    );
   };
 
   const upsertMembers = (members) => {
@@ -316,14 +322,14 @@ const createSqliteStore = ({ createMember, defaultMembers }) => {
   };
 
   const load = () => {
-    applyMigrations(db);
-    const members = db.prepare("SELECT id, name, reminder_prefs FROM members").all();
+    const members = db.prepare("SELECT id, name, reminder_prefs, wechat_openid FROM members").all();
     const tasks = db.prepare("SELECT id, content, due_at, require_confirm, state, created_by, created_at, updated_at, archived_at, deleted_at, repeat_rule, series_id, occurrence, reminders FROM tasks").all();
     if (members.length || tasks.length) {
       state.members = members.map((row) => ({
         id: row.id,
         name: row.name,
-        reminderPrefs: row.reminder_prefs ? JSON.parse(row.reminder_prefs) : {}
+        reminderPrefs: row.reminder_prefs ? JSON.parse(row.reminder_prefs) : {},
+        wechatOpenId: row.wechat_openid || null
       }));
       const ownerRows = db.prepare("SELECT task_id, member_id FROM task_owners").all();
       const subtaskRows = db.prepare("SELECT id, task_id, content, done, created_at, done_at FROM subtasks").all();

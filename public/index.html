@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>家庭多人协同 Todo</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/home-todo/styles.css" />
   </head>
-  <body>
+  <body data-base="/home-todo">
     <div id="app">
       <header class="top-bar">
         <div>
@@ -19,10 +19,20 @@
             <select id="currentUserSelect"></select>
           </div>
           <div class="user-row">
-            <button id="addMemberBtn" class="ghost">添加成员</button>
+            <span class="label">微信提醒</span>
+            <button id="bindWeChatBtn" class="ghost">绑定微信</button>
           </div>
-          <div class="user-row">
-            <button id="logoutBtn" class="ghost">退出</button>
+          <div class="user-row user-actions">
+            <button id="addMemberBtn" class="icon-btn" aria-label="添加成员" title="添加成员">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm7 9a1 1 0 0 1-1-1 5 5 0 0 0-10 0 1 1 0 0 1-2 0 7 7 0 0 1 14 0 1 1 0 0 1-1 1Zm-2-8h-2V11a1 1 0 0 0-2 0v2h-2a1 1 0 0 0 0 2h2v2a1 1 0 0 0 2 0v-2h2a1 1 0 0 0 0-2Z"></path>
+              </svg>
+            </button>
+            <button id="logoutBtn" class="icon-btn" aria-label="退出" title="退出">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-3a1 1 0 0 1 2 0v2h6V5h-6v2a1 1 0 0 1-2 0V4a1 1 0 0 1 1-1Zm4.707 6.293a1 1 0 0 1 1.414 0l3 3a1 1 0 0 1 0 1.414l-3 3a1 1 0 1 1-1.414-1.414L16.586 13H5a1 1 0 0 1 0-2h11.586l-1.879-1.879a1 1 0 0 1 0-1.414Z"></path>
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -87,40 +97,12 @@
         </div>
       </section>
 
-      <section class="create">
-        <h2>新建任务</h2>
-        <textarea
-          id="taskContent"
-          placeholder="例如：周三你接孩子放学"
-        ></textarea>
-        <div id="triageHint" class="hint"></div>
-        <div class="form-grid">
-          <div class="form-block">
-            <div class="label">责任人</div>
-            <div id="ownersList" class="chip-list"></div>
-          </div>
-          <div class="form-block">
-            <label class="label" for="dueAt">截止时间</label>
-            <input id="dueAt" type="datetime-local" />
-            <label class="label" for="repeatRule">重复频率</label>
-            <select id="repeatRule">
-              <option value="none">不重复</option>
-              <option value="daily">每天</option>
-              <option value="weekly">每周</option>
-              <option value="monthly">每月</option>
-            </select>
-            <label class="checkbox">
-              <input id="requireConfirm" type="checkbox" />
-              完成需确认
-            </label>
-          </div>
-        </div>
-        <button id="createTaskBtn" class="primary">创建并指派</button>
-      </section>
-
       <section class="tasks">
         <div class="section-head">
-          <h2>任务列表</h2>
+          <div class="section-left">
+            <h2>任务列表</h2>
+            <button id="openCreateTask" class="primary">新建任务</button>
+          </div>
           <div class="filters">
             <select id="statusFilter">
               <option value="all">全部</option>
@@ -133,7 +115,6 @@
             <select id="ownerFilter"></select>
             <input id="dueDateFilter" type="date" />
           </div>
-          <span class="filter-hint">回收站入口在状态筛选里</span>
         </div>
         <div id="taskList" class="task-list"></div>
       </section>
@@ -209,6 +190,6 @@
       </div>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/home-todo/app.js"></script>
   </body>
 </html>

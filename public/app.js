@@ -1,6 +1,10 @@
 const ACCESS_PASSWORD = "family";
 const AUTH_STORAGE_KEY = "home_todo_access";
 
+const basePath = (document.body?.dataset?.basePath || "").replace(/\/$/, "");
+const apiUrl = (path) => `${basePath}${path}`;
+const apiFetch = (path, options) => fetch(apiUrl(path), options);
+
 const state = {
   members: [],
   tasks: [],
@@ -10,6 +14,7 @@ const state = {
 let eventSource = null;
 let sseRetryTimer = null;
 let calendarDate = new Date();
+let wechatEnabled = false;
 const chartTooltip = document.createElement("div");
 chartTooltip.className = "chart-tooltip";
 document.body.appendChild(chartTooltip);
@@ -33,13 +38,8 @@ const elements = {
   currentUserSelect: document.getElementById("currentUserSelect"),
   addMemberBtn: document.getElementById("addMemberBtn"),
   logoutBtn: document.getElementById("logoutBtn"),
-  taskContent: document.getElementById("taskContent"),
-  triageHint: document.getElementById("triageHint"),
-  ownersList: document.getElementById("ownersList"),
-  dueAt: document.getElementById("dueAt"),
-  repeatRule: document.getElementById("repeatRule"),
-  requireConfirm: document.getElementById("requireConfirm"),
-  createTaskBtn: document.getElementById("createTaskBtn"),
+  openCreateTask: document.getElementById("openCreateTask"),
+  bindWeChatBtn: document.getElementById("bindWeChatBtn"),
   taskList: document.getElementById("taskList"),
   statusFilter: document.getElementById("statusFilter"),
   ownerFilter: document.getElementById("ownerFilter"),
@@ -481,14 +481,6 @@ const renderMembers = () => {
     elements.currentUserSelect.appendChild(option);
   });
 
-  elements.ownersList.innerHTML = "";
-  state.members.forEach((member) => {
-    const label = document.createElement("label");
-    label.className = "chip";
-    label.innerHTML = `<input type="checkbox" value="${member.id}"/>${member.name}`;
-    elements.ownersList.appendChild(label);
-  });
-
   const selectedOwner = elements.ownerFilter.value || "all";
   elements.ownerFilter.innerHTML = "";
   const allOption = document.createElement("option");
@@ -510,6 +502,12 @@ const renderMembers = () => {
 
   if (!currentId && state.members.length) {
     setCurrentUserId(state.members[0].id);
+  }
+  const currentMember = state.members.find((member) => member.id === ensureValidCurrentUser());
+  if (elements.bindWeChatBtn) {
+    const bound = Boolean(currentMember?.wechatOpenId);
+    elements.bindWeChatBtn.textContent = bound ? "已绑定" : "绑定微信";
+    elements.bindWeChatBtn.disabled = !wechatEnabled || bound;
   }
   updateReminderSettingsUI();
 };
@@ -722,10 +720,10 @@ const renderMemberStatsFromRemote = (members) => {
 const loadRemoteStats = async (days, trendType, daySeries) => {
   try {
     const [reminderRes, taskRes, memberRes, reminderTrendRes] = await Promise.all([
-      fetch(`/api/stats/reminders?days=${days}`),
-      fetch(`/api/stats/tasks?days=${days}`),
-      fetch(`/api/stats/members?days=${days}`),
-      trendType === "reminders" ? fetch(`/api/stats/reminders/trend?days=${days}`) : Promise.resolve(null)
+      apiFetch(`/api/stats/reminders?days=${days}`),
+      apiFetch(`/api/stats/tasks?days=${days}`),
+      apiFetch(`/api/stats/members?days=${days}`),
+      trendType === "reminders" ? apiFetch(`/api/stats/reminders/trend?days=${days}`) : Promise.resolve(null)
     ]);
     if (reminderRes.ok) {
       const reminderStats = await reminderRes.json();
@@ -856,10 +854,10 @@ const buildCsvSection = (title, rows, headers) => {
 const exportStatsCsv = async () => {
   const days = Number(elements.trendRange.value || 7);
   const [reminderRes, taskRes, memberRes, reminderTrendRes] = await Promise.all([
-    fetch(`/api/stats/reminders?days=${days}`),
-    fetch(`/api/stats/tasks?days=${days}`),
-    fetch(`/api/stats/members?days=${days}`),
-    fetch(`/api/stats/reminders/trend?days=${days}`)
+    apiFetch(`/api/stats/reminders?days=${days}`),
+    apiFetch(`/api/stats/tasks?days=${days}`),
+    apiFetch(`/api/stats/members?days=${days}`),
+    apiFetch(`/api/stats/reminders/trend?days=${days}`)
   ]);
   const reminderStats = reminderRes.ok ? await reminderRes.json() : { byType: [], byMember: [], byTask: [] };
   const taskStats = taskRes.ok ? await taskRes.json() : { byAction: [], byActor: [] };
@@ -977,6 +975,13 @@ const renderTasks = () => {
   }
 
   elements.taskList.innerHTML = "";
+  const tooltipMap = {
+    pending: "等待发起人确认完成的任务",
+    active: "已指派并正在处理的任务",
+    done: "已确认完成的任务",
+    archived: "已归档但可恢复的任务",
+    trash: "已删除但可恢复的任务"
+  };
   const groups = filter === "trash"
     ? [{ key: "trash", title: "回收站", states: [] }]
     : filter === "archived"
@@ -1004,7 +1009,10 @@ const renderTasks = () => {
     groupCard.className = "task-group";
     const header = document.createElement("div");
     header.className = "task-group-title";
-    header.textContent = group.title;
+    header.innerHTML = `
+      <span>${group.title}</span>
+      <span class="hint-dot" data-tip="${tooltipMap[group.key] || ""}">?</span>
+    `;
     const list = document.createElement("div");
     list.className = "task-group-list";
     groupCard.appendChild(header);
@@ -1200,7 +1208,7 @@ const connectSSE = (memberId) => {
   if (!memberId) {
     return;
   }
-  eventSource = new EventSource(`/events?memberId=${memberId}`);
+  eventSource = new EventSource(apiUrl(`/events?memberId=${memberId}`));
   eventSource.addEventListener("state_update", (event) => {
     const data = JSON.parse(event.data);
     state.members = data.members || [];
@@ -1248,7 +1256,7 @@ const closeSSE = () => {
 };
 
 const loadState = async () => {
-  const res = await fetch("/api/state");
+  const res = await apiFetch("/api/state");
   const data = await res.json();
   state.members = data.members || [];
   state.tasks = data.tasks || [];
@@ -1257,60 +1265,144 @@ const loadState = async () => {
   }
   renderAll();
   connectSSE(ensureValidCurrentUser());
+  loadWeChatStatus();
 };
 
-const updateTriage = () => {
-  const { owners, dueAt, hint } = parseTriage(elements.taskContent.value);
-  if (!elements.dueAt.value && dueAt) {
-    elements.dueAt.value = dueAt.slice(0, 16);
-  }
-  if (!owners.length) {
-    elements.triageHint.textContent = hint;
-    return;
-  }
-  const checkboxes = elements.ownersList.querySelectorAll("input[type='checkbox']");
-  checkboxes.forEach((checkbox) => {
-    if (owners.includes(checkbox.value)) {
-      checkbox.checked = true;
+const loadWeChatStatus = async () => {
+  try {
+    const res = await apiFetch("/api/wechat/status");
+    if (!res.ok) {
+      return;
     }
-  });
-  elements.triageHint.textContent = hint;
-};
-
-const getSelectedOwners = () => {
-  const checkboxes = elements.ownersList.querySelectorAll("input[type='checkbox']");
-  return Array.from(checkboxes)
-    .filter((checkbox) => checkbox.checked)
-    .map((checkbox) => checkbox.value);
-};
-
-const createTask = async () => {
-  const content = elements.taskContent.value.trim();
-  if (!content) {
+    const data = await res.json();
+    wechatEnabled = Boolean(data.enabled);
+    renderMembers();
+  } catch (error) {
     return;
   }
-  const owners = getSelectedOwners();
-  const dueAt = elements.dueAt.value ? new Date(elements.dueAt.value).toISOString() : null;
-  const repeat = elements.repeatRule.value || "none";
-  const requireConfirm = elements.requireConfirm.checked;
+};
+
+const openTaskCreateModal = () => {
+  const currentId = ensureValidCurrentUser();
+  if (!currentId) {
+    return;
+  }
+  elements.modalTitle.textContent = "新建任务";
+  elements.modalBody.innerHTML = `
+    <div class="modal-field">
+      <div class="modal-label">任务内容</div>
+      <input class="modal-input" id="modalCreateContent" type="text" />
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">截止时间</div>
+      <input class="modal-input" id="modalCreateDueAt" type="datetime-local" />
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">重复频率</div>
+      <select class="modal-input" id="modalCreateRepeat">
+        <option value="none">不重复</option>
+        <option value="daily">每天</option>
+        <option value="weekly">每周</option>
+        <option value="monthly">每月</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">责任人</div>
+      <div id="modalCreateOwners" class="chip-list modal-owners"></div>
+    </div>
+    <label class="checkbox modal-checkbox">
+      <input id="modalCreateRequireConfirm" type="checkbox" />
+      完成需确认
+    </label>
+    <div id="modalCreateHint" class="hint"></div>
+  `;
+  const contentInput = elements.modalBody.querySelector("#modalCreateContent");
+  const dueAtInput = elements.modalBody.querySelector("#modalCreateDueAt");
+  const repeatInput = elements.modalBody.querySelector("#modalCreateRepeat");
+  const ownersContainer = elements.modalBody.querySelector("#modalCreateOwners");
+  const confirmInput = elements.modalBody.querySelector("#modalCreateRequireConfirm");
+  const hintNode = elements.modalBody.querySelector("#modalCreateHint");
+  ownersContainer.innerHTML = "";
+  state.members.forEach((member) => {
+    const label = document.createElement("label");
+    label.className = "chip";
+    const checked = member.id === currentId ? "checked" : "";
+    label.innerHTML = `<input type="checkbox" value="${member.id}" ${checked} />${member.name}`;
+    ownersContainer.appendChild(label);
+  });
+  contentInput.addEventListener("input", () => {
+    const { owners, dueAt, hint } = parseTriage(contentInput.value);
+    if (!dueAtInput.value && dueAt) {
+      dueAtInput.value = dueAt.slice(0, 16);
+    }
+    if (owners.length) {
+      const checkboxes = ownersContainer.querySelectorAll("input[type='checkbox']");
+      checkboxes.forEach((checkbox) => {
+        if (owners.includes(checkbox.value)) {
+          checkbox.checked = true;
+        }
+      });
+    }
+    hintNode.textContent = hint;
+  });
+  elements.modalOverlay.classList.remove("hidden");
+  elements.modalConfirm.textContent = "创建";
+  elements.modalConfirm.onclick = async () => {
+    const nextContent = contentInput.value.trim();
+    if (!nextContent) {
+      return;
+    }
+    const owners = Array.from(
+      ownersContainer.querySelectorAll("input[type='checkbox']")
+    )
+      .filter((checkbox) => checkbox.checked)
+      .map((checkbox) => checkbox.value);
+    const dueAt = dueAtInput.value ? new Date(dueAtInput.value).toISOString() : null;
+    const repeat = repeatInput.value || "none";
+    const requireConfirm = confirmInput.checked;
+    closeModal();
+    await createTask({ content: nextContent, owners, dueAt, repeat, requireConfirm });
+  };
+  setTimeout(() => contentInput.focus(), 0);
+};
+
+const refreshState = async () => {
+  const res = await apiFetch("/api/state");
+  if (!res.ok) {
+    return;
+  }
+  const data = await res.json();
+  state.members = data.members || [];
+  state.tasks = data.tasks || [];
+  renderAll();
+};
+
+const createTask = async ({ content, owners, dueAt, repeat, requireConfirm }) => {
   const createdBy = ensureValidCurrentUser();
   if (!createdBy) {
     return;
   }
-  await fetch("/api/tasks", {
+  const res = await apiFetch("/api/tasks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content, owners, dueAt, repeat, requireConfirm, createdBy })
   });
-  elements.taskContent.value = "";
-  elements.dueAt.value = "";
-  elements.repeatRule.value = "none";
-  elements.requireConfirm.checked = false;
-  const checkboxes = elements.ownersList.querySelectorAll("input[type='checkbox']");
-  checkboxes.forEach((checkbox) => {
-    checkbox.checked = false;
-  });
-  elements.triageHint.textContent = "";
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  state.tasks.unshift(task);
+  renderAll();
+};
+
+const applyTaskUpdate = (task) => {
+  const index = state.tasks.findIndex((item) => item.id === task.id);
+  if (index >= 0) {
+    state.tasks[index] = task;
+  } else {
+    state.tasks.unshift(task);
+  }
+  renderAll();
 };
 
 const updateTaskAction = async (taskId, action) => {
@@ -1318,11 +1410,16 @@ const updateTaskAction = async (taskId, action) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, actorId })
   });
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  applyTaskUpdate(task);
 };
 
 const updateTaskDetails = async (taskId, payload) => {
@@ -1330,11 +1427,16 @@ const updateTaskDetails = async (taskId, payload) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "update", actorId, ...payload })
   });
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  applyTaskUpdate(task);
 };
 
 const deleteTask = async (taskId) => {
@@ -1342,11 +1444,15 @@ const deleteTask = async (taskId) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ actorId })
   });
+  if (!res.ok) {
+    return;
+  }
+  await refreshState();
 };
 
 const updateSubtask = async (taskId, action, payload) => {
@@ -1354,11 +1460,16 @@ const updateSubtask = async (taskId, action, payload) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, actorId, ...payload })
   });
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  applyTaskUpdate(task);
 };
 
 const updateComment = async (taskId, content) => {
@@ -1366,11 +1477,16 @@ const updateComment = async (taskId, content) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "comment", actorId, content })
   });
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  applyTaskUpdate(task);
 };
 
 const snoozeTask = async (taskId) => {
@@ -1378,11 +1494,16 @@ const snoozeTask = async (taskId) => {
   if (!actorId) {
     return;
   }
-  await fetch(`/api/tasks/${taskId}`, {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "snooze", actorId, minutes: 60 })
   });
+  if (!res.ok) {
+    return;
+  }
+  const task = await res.json();
+  applyTaskUpdate(task);
 };
 
 const updateReminderSettings = async () => {
@@ -1396,7 +1517,7 @@ const updateReminderSettings = async () => {
     remind2h: elements.remind2h.checked,
     overdue: elements.remindOverdue.checked
   };
-  await fetch(`/api/members/${memberId}`, {
+  await apiFetch(`/api/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reminderPrefs })
@@ -1408,7 +1529,7 @@ const addMember = async () => {
     title: "添加成员",
     value: "",
     onConfirm: async (name) => {
-      await fetch("/api/members", {
+      await apiFetch("/api/members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
@@ -1417,9 +1538,17 @@ const addMember = async () => {
   });
 };
 
+const bindWeChat = () => {
+  const memberId = ensureValidCurrentUser();
+  if (!memberId) {
+    return;
+  }
+  window.location.href = apiUrl(`/api/wechat/bind?memberId=${memberId}`);
+};
+
 elements.addMemberBtn.addEventListener("click", addMember);
-elements.taskContent.addEventListener("input", updateTriage);
-elements.createTaskBtn.addEventListener("click", createTask);
+elements.bindWeChatBtn.addEventListener("click", bindWeChat);
+elements.openCreateTask.addEventListener("click", openTaskCreateModal);
 elements.statusFilter.addEventListener("change", renderTasks);
 elements.ownerFilter.addEventListener("change", renderTasks);
 elements.dueDateFilter.addEventListener("change", renderTasks);
